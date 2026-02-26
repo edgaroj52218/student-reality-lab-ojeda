@@ -65,7 +65,7 @@ Retrieval date: Feb. 26, 2026
 * CPI measures price changes for urban consumers and may not perfectly represent student-specific consumption patterns.
 * Wage data reflects production and nonsupervisory employees, which serves as a proxy for early-career workers but does not isolate strictly “entry-level” employees.
 
-***Cleaning & Transformation Plan***
+***Cleaning & Transformation Plan***   
 To ensure the UI consumes clean, predictable data:
 1. Remove metadata rows from raw CSV files.
 2. Convert monthly data into annual averages for both wage and CPI datasets.
