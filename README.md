@@ -1,8 +1,10 @@
 # student-reality-lab-ojeda
-## NJIT Spring 2026 IS219 Midterm Project
+# NJIT Spring 2026 IS219 Midterm Project
 ___________________________________
 ## Are Entry-Level Wages Keeping Up With Inflation?
-### Essential Question 
+### A Data Story for Students Entering the Workforce
+___________________________________
+### Essential Question
 Have production and nonsupervisory wages in the U.S. kept pace with inflation since 2010?
 ### Claim
 Production and nonsupervisory wages have not kept up with inflation since 2010, resulting in lower real purchasing power for new workers.
@@ -31,6 +33,7 @@ Production and nonsupervisory wages have not kept up with inflation since 2010, 
 ### Dataset & Provenance
 ***Wage Data Source***
 From: U.S. Bureau of Labor Statistics (BLS)
+Link: https://data.bls.gov/timeseries/CES0500000008 (Formatting Adjusted)
 Series ID: CES0500000008
 Series Title: Average Hourly Earnings of Production and Nonsupervisory Employees
 License: Public domain (U.S. government)
@@ -38,7 +41,10 @@ Retrieval data: Feb. 26, 2026
 
 ***Inflation Data Source***
 From: BLS Consumer Price Index (CPI-U)
-License: Public domain
+Link: https://data.bls.gov/timeseries/CUSR0000SA0 (Formatting Adjusted)
+Series ID: CUSR0000SA0
+Series Title: Consumer Price Index for All Urban Consumers (CPI-U)
+License: Public domain (U.S. government)
 Retrieval date: Feb. 26, 2026
 
 ### Data Dictionary
@@ -51,38 +57,68 @@ Retrieval date: Feb. 26, 2026
 |pct_change_real|Percent change in real wage from base year|%|
 
 
-### Data Viability Audit
-**Missing Values & Structural Issues**
-- Both datasets (CES0500000008 and CUSR0000SA0) provide complete monthly observations from 2010–2025.
-- No structural gaps were observed within the selected date range.
+## Data Viability Audit
+
+### Missing Values & Structural Issues
+- Both datasets (CES0500000008 and CUSR0000SA0) provide complete monthly
+  observations from 2010–2025 with no structural gaps in the selected range.
 - 2025 data may include preliminary (P) values in the most recent months.
-- Data is reported monthly and must be aggregated to annual averages for clarity and consistency.
+- **One known gap:** CPI October 2025 is missing from the source file.
+  The processing script handles this gracefully by averaging only the
+  available months for that year rather than erroring or dropping the row.
+- Both datasets are monthly and are aggregated to annual averages in
+  `src/lib/processData.js` before use in the UI.
 
-***Weird Fields / Interpretation Concerns***
-* CPI is reported as an index (1982–84 = 100), not dollar values.
-* Wage data is reported in nominal USD, not inflation-adjusted.
-* Both datasets are monthly, meaning time alignment is required before transformation.
-* CPI measures price changes for urban consumers and may not perfectly represent student-specific consumption patterns.
-* Wage data reflects production and nonsupervisory employees, which serves as a proxy for early-career workers but does not isolate strictly “entry-level” employees.
+### Weird Fields / Interpretation Concerns
+- CPI is reported as an index (1982–84 = 100), not in dollar values —
+  it must be used as a ratio to convert nominal wages into real wages.
+- The `Annual` column present in the raw CPI file is blank and is ignored
+  by the processing script; annual averages are computed from monthly values.
+- Wage data is in nominal USD and requires inflation adjustment before
+  any meaningful year-over-year purchasing power comparison can be made.
+- CPI-U measures price changes for urban consumers broadly and may not
+  perfectly represent the specific consumption patterns of students or
+  recent graduates (e.g., tuition, rent in college towns).
+- The wage series (CES0500000008) covers production and nonsupervisory
+  employees as a proxy for entry-level / non-management workers — it does
+  not isolate strictly "entry-level" or student-age employees.
 
-***Cleaning & Transformation Plan***   
-To ensure the UI consumes clean, predictable data:
-1. Remove metadata rows from raw CSV files.
-2. Convert monthly data into annual averages for both wage and CPI datasets.
-3. Align both datasets by calendar year.
-4. Select a base year (2010) for inflation adjustment.
+### Cleaning & Transformation Plan
+All cleaning and transformation is handled automatically by `src/lib/processData.js`.
+Steps performed:
+
+1. Parse both raw CSVs and strip any blank or non-numeric fields
+2. Average the 12 monthly values per year into a single annual figure
+   (months with missing values are excluded from the average, not zeroed)
+3. Align both datasets by calendar year (2010–2025)
+4. Select 2010 as the base year for inflation adjustment
 5. Compute real wages using:
-`Real Wage = Nominal Wage × (Base CPI / Current CPI)`
-6. Calculate percent change in real wages since 2010.
-7. Round final values to two decimal places for readability.
-8. Output a structured processed dataset (year, nominal_wage, real_wage, cpi, pct_change_real).
+   `Real Wage = Nominal Wage × (CPI_2010 / CPI_current)`
+6. Compute percent change in real wages since 2010:
+   `pct_change_real = ((real_wage - base_wage) / base_wage) × 100`
+7. Round all values to two decimal places for readability
+8. Output to `data/processed/processed.json` and `src/data/processed.json`
 
-***What This Dataset Cannot Prove (Limit & Bias)***
-* Does not isolate strictly entry-level workers.
-* Does not account for regional wage variation.
-* Does not include non-wage compensation (benefits, bonuses, equity).
-* CPI may not reflect the exact consumption patterns of students or recent graduates.
-* Does not measure cost-of-living variation across metropolitan areas.
-* Cannot determine causation — only trend comparison.
+### What This Dataset Cannot Prove (Limits & Bias)
+- **Cannot isolate entry-level workers specifically** — the wage series covers
+  all production and nonsupervisory employees, including experienced workers.
+- **No regional breakdown** — national averages mask significant variation
+  between high cost-of-living metros and lower cost regions.
+- **Non-wage compensation excluded** — benefits, bonuses, equity, and
+  employer-paid healthcare are not reflected in hourly wage figures.
+- **Student-specific costs not captured** — CPI-U does not weight tuition,
+  student housing, or other student-specific expenses separately.
+- **Cannot determine causation** — the data shows correlation between
+  inflation and wage stagnation but cannot explain why wages did not keep pace.
+- **Cannot speak to all workers** — gig workers, self-employed individuals,
+  and tipped workers are not represented in this series.
 
 ### Data Chart Screenshot
+
+![Draft chart: Nominal vs Real Wages 2010-2025](datachart.png)
+
+- The two-line chart directly answers the essential question by showing both 
+  what workers are *paid* (nominal) and what they can actually *buy* (real), 
+  making the divergence visible at a glance.
+- The flattening of the real wage line after 2020 confirms the claim that 
+  inflation has outpaced wage growth, eroding purchasing power for new workers.
