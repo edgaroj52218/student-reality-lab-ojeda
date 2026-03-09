@@ -35,10 +35,10 @@ function annualAverage(row) {
 // ── Load raw data ─────────────────────────────────────────────────────────────
 
 const wageRows = parseCSV(
-  path.join(__dirname, "../../data/raw/wages_raw.csv")
+  path.join(__dirname, "../../data/wages_raw.csv")
 );
 const cpiRows = parseCSV(
-  path.join(__dirname, "../../data/raw/raw_cpi.csv")
+  path.join(__dirname, "../../data/raw_cpi.csv")
 );
 
 // ── Build lookup maps keyed by year ──────────────────────────────────────────
@@ -85,7 +85,7 @@ const processed = years.map((year) => {
 
 // ── Write output ──────────────────────────────────────────────────────────────
 
-const outPath = path.join(__dirname, "../../data/processed/processed.json");
+const outPath = path.join(__dirname, "../../data/processed.json");
 fs.writeFileSync(outPath, JSON.stringify(processed, null, 2));
 
 console.log(`✅ Processed ${processed.length} years → data/processed/processed.json`);
