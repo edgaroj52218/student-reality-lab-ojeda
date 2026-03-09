@@ -1,0 +1,43 @@
+/* index.css */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --color-bg: #0f1117;
+  --color-surface: #1a1d27;
+  --color-border: #2a2d3a;
+  --color-nominal: #60a5fa;
+  --color-real: #f97316;
+  --color-text: #e2e8f0;
+  --color-muted: #94a3b8;
+  --color-accent: #f97316;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  font-size: 16px;
+}
+
+h1, h2, h3 {
+  line-height: 1.2;
+}
+
+a {
+  color: var(--color-nominal);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
