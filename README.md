@@ -47,6 +47,8 @@ Series Title: Consumer Price Index for All Urban Consumers (CPI-U)
 License: Public domain (U.S. government)
 Retrieval date: Feb. 26, 2026
 
+-----
+
 ### Data Dictionary
 |Term|Meaning|Units|
 |------|---------|-------|
@@ -56,6 +58,18 @@ Retrieval date: Feb. 26, 2026
 |real_wage|Inflation-adjusted wage|USD (base year dollars)|
 |pct_change_real|Percent change in real wage from base year|%|
 
+----
+### Definitions
+| Term | How This Project Defines It |
+|------|----------------------------|
+| Nominal Wage | Average hourly earnings in current dollars, unadjusted for inflation (BLS CES0500000008) |
+| Real Wage | Nominal wage converted to 2010 dollars using CPI-U ratio |
+| Base Year | 2010 — all real wage comparisons are relative to this year |
+| Inflation | Measured by CPI-U (All Urban Consumers, All Items, BLS CUSR0000SA0) |
+| Purchasing Power | What one hour of work can actually buy, expressed in constant 2010 dollars |
+| Entry-Level Proxy | Production and nonsupervisory workers used as a stand-in for non-management early-career workers |
+
+----
 
 ## Data Viability Audit
 
@@ -122,3 +136,58 @@ Steps performed:
   making the divergence visible at a glance.
 - The flattening of the real wage line after 2020 confirms the claim that 
   inflation has outpaced wage growth, eroding purchasing power for new workers.
+
+----
+
+## Cleaning & Transform Notes
+- Raw CSVs contain monthly values; all data is aggregated to annual averages
+- Missing CPI value (Oct 2025) is excluded from that year's average gracefully
+- Base year 2010 selected as it represents a pre-COVID, stable economic baseline
+- All output values rounded to 2 decimal places for UI readability
+- Processed output lives in both `/data/processed.json` (pipeline output)
+  and `/src/data/processed.json` (React import)
+
+---
+
+## Interaction Design
+
+**View 1 — Nominal vs Real Wages Over Time**
+- **Toggle (Nominal / Real / Both):** Lets the viewer isolate each wage
+  series independently. Switching to "Real Only" removes the illusion of
+  wage growth and directly answers the essential question.
+- **Year Slider:** Allows zooming into any time window (e.g., 2018–2022)
+  to isolate the inflation period without the noise of earlier years.
+
+**View 2 — Purchasing Power % Change**
+- **Chart Type Toggle (Bar / Line):** Bar chart emphasizes individual years
+  clearly showing which years were above or below the 2010 baseline. Line
+  chart reveals the full trend arc — the rise, spike, crash, and recovery.
+
+Both interactions change the data view, not just styling — satisfying the
+assignment requirement for meaningful interaction.
+
+---
+
+## Limits & What I'd Do Next
+- Add regional breakdowns by state to show cost-of-living variation
+- Isolate wage data specifically for workers aged 18–24
+- Include non-wage compensation (benefits, bonuses) for a fuller picture
+- Add a third view comparing student-specific costs (tuition, rent) against
+  wage growth for a more targeted student audience
+
+---
+
+## How to Run Locally
+```bash
+git clone https://github.com/yourusername/student-reality-lab-ojeda
+cd student-reality-lab-ojeda
+npm install
+npm start
+```
+
+---
+
+## Deployment
+Live URL: *([https://student-reality-lab-ojeda.vercel.app/](https://student-reality-lab-ojeda.vercel.app/))*
+
+Built with React + Recharts. Deployed via Vercel.
