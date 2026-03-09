@@ -188,6 +188,6 @@ npm start
 ---
 
 ## Deployment
-Live URL: *([https://student-reality-lab-ojeda.vercel.app/](https://student-reality-lab-ojeda.vercel.app/))*
+Live URL: https://student-reality-lab-ojeda.vercel.app/
 
 Built with React + Recharts. Deployed via Vercel.
