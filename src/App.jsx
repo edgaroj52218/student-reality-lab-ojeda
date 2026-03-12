@@ -75,7 +75,7 @@ export default function App() {
         <p>
           Built by Edgar Steven Ojeda · NJIT IS219 Spring 2026 ·{" "}
           <a
-            href="https://github.com/edgarojeda/student-reality-lab-ojeda"
+            href="https://github.com/edgaroj52218/student-reality-lab-ojeda"
             target="_blank"
             rel="noopener noreferrer"
           >
