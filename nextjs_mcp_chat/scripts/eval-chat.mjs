@@ -4,7 +4,7 @@ const baseUrl = process.env.EVAL_BASE_URL ?? "http://localhost:3000";
 const endpoint = `${baseUrl.replace(/\/$/, "")}/api/chat`;
 
 const toolDenialPattern =
-  /(don['’]t have.*tool|cannot.*tool|can't.*tool|no tool.*connected|unable to invoke tools)/i;
+  /(don['']t have.*tool|cannot.*tool|can't.*tool|no tool.*connected|unable to invoke tools)/i;
 
 /**
  * @typedef {{ role: "user" | "assistant", content: string }} ChatMessage
@@ -38,101 +38,103 @@ async function callChat(messages) {
   };
 }
 
-/**
- * @param {string} reply
- */
-function parseNumericResult(reply) {
-  const match = reply.match(/result:\s*(-?\d+(?:\.\d+)?)/i);
-  if (!match) {
-    return null;
-  }
-
-  const value = Number(match[1]);
-  return Number.isNaN(value) ? null : value;
-}
-
 const evalCases = [
   {
-    name: "Math expression routes through tool",
-    messages: [{ role: "user", content: "what is 14 + 8?" }],
+    name: "Single year lookup returns wage data",
+    messages: [{ role: "user", content: "What were wages in 2021?" }],
     validate: (result) => {
       const reply = String(result.payload?.reply ?? "");
-      const number = parseNumericResult(reply);
-
       if (!result.ok) {
         return `Expected 200 response, got ${result.status} with ${JSON.stringify(result.payload)}`;
       }
-
-      if (number !== 22) {
-        return `Expected tool-backed result 22, got reply: ${reply}`;
+      if (!/2021/i.test(reply)) {
+        return `Expected reply to reference 2021, got: ${reply}`;
       }
-
+      if (!/wage|nominal|real|\$26|\$20/i.test(reply)) {
+        return `Expected reply to contain wage data, got: ${reply}`;
+      }
       return null;
     },
   },
   {
-    name: "Conversational add routes through tool",
-    messages: [{ role: "user", content: "please add 41 and 1" }],
+    name: "Compare nominal vs real wages returns both values and gap",
+    messages: [
+      { role: "user", content: "Compare nominal vs real wages in 2022." },
+    ],
     validate: (result) => {
       const reply = String(result.payload?.reply ?? "");
-      const number = parseNumericResult(reply);
-
       if (!result.ok) {
         return `Expected 200 response, got ${result.status} with ${JSON.stringify(result.payload)}`;
       }
-
-      if (number !== 42) {
-        return `Expected tool-backed result 42, got reply: ${reply}`;
+      if (!/nominal|real/i.test(reply)) {
+        return `Expected reply to mention nominal and real wages, got: ${reply}`;
       }
-
+      if (!/2022/i.test(reply)) {
+        return `Expected reply to reference 2022, got: ${reply}`;
+      }
+      return null;
+    },
+  },
+  {
+    name: "Trend query returns directional analysis",
+    messages: [
+      {
+        role: "user",
+        content: "What was the wage trend from 2018 to 2023?",
+      },
+    ],
+    validate: (result) => {
+      const reply = String(result.payload?.reply ?? "");
+      if (!result.ok) {
+        return `Expected 200 response, got ${result.status} with ${JSON.stringify(result.payload)}`;
+      }
+      if (!/2018|2023/i.test(reply)) {
+        return `Expected reply to reference the years 2018 and 2023, got: ${reply}`;
+      }
+      if (!/grew|shrank|outpaced|inflation|purchasing power|real/i.test(reply)) {
+        return `Expected reply to include trend analysis language, got: ${reply}`;
+      }
       return null;
     },
   },
   {
     name: "Use-tool follow-up never claims tools unavailable",
     messages: [
-      { role: "user", content: "what is 2 + 2?" },
-      { role: "assistant", content: "Result: 4" },
-      { role: "user", content: "use the tool" },
+      { role: "user", content: "What were wages in 2019?" },
+      {
+        role: "assistant",
+        content:
+          '{"year":2019,"nominal_wage":23.51,"real_wage":20.45,"cpi":255.657,"pct_change_real_since_2010":7.23}',
+      },
+      { role: "user", content: "Use the tool to check 2020." },
     ],
     validate: (result) => {
       const reply = String(result.payload?.reply ?? "");
-
       if (!result.ok) {
         return `Expected 200 response, got ${result.status} with ${JSON.stringify(result.payload)}`;
       }
-
       if (toolDenialPattern.test(reply)) {
         return `Reply incorrectly denied tool access: ${reply}`;
       }
-
-      if (!/tool|calculate|result/i.test(reply)) {
-        return `Reply should reference tool-backed math behavior, got: ${reply}`;
-      }
-
       return null;
     },
   },
   {
-    name: "Non-math prompt still works with real LLM",
+    name: "Non-wage prompt still works with real LLM",
     messages: [
-      { role: "user", content: "Write one short sentence about teamwork." },
+      { role: "user", content: "Write one short sentence about perseverance." },
     ],
     validate: (result) => {
       const reply = String(result.payload?.reply ?? "").trim();
-
       if (!result.ok) {
         return `Expected 200 response, got ${result.status} with ${JSON.stringify(result.payload)}`;
       }
-
       if (reply.length < 12) {
         return `Expected meaningful LLM text, got: ${reply}`;
       }
-
       if (toolDenialPattern.test(reply)) {
-        return `Non-math response denied tool access unexpectedly: ${reply}`;
+        return `Non-wage response denied tool access unexpectedly: ${reply}`;
       }
-
       return null;
     },
   },
@@ -140,7 +142,6 @@ const evalCases = [
 
 async function run() {
   const preflight = await fetch(baseUrl).catch(() => null);
-
   if (!preflight) {
     console.error(
       `❌ Dev server not reachable at ${baseUrl}. Start it with: npm run dev`

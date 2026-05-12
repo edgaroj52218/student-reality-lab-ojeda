@@ -2,12 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import {
-  callCalculatorTool,
-  type CalculatorOperation,
-} from "@/lib/mcp-calculator-client";
-import { detectMathIntent, detectMathRelated } from "@/lib/math-intent";
+import { callWageTool, type WageTool } from "@/lib/mcp-wage-client";
+import { detectWageRelated } from "@/lib/wage-intent";
 
 const bodySchema = z.object({
   messages: z
@@ -21,68 +17,45 @@ const bodySchema = z.object({
     .max(30),
 });
 
-const calculatorArgumentsSchema = z.object({
-  a: z.number(),
-  b: z.number(),
-});
+const wageTools = [
+  "get_wage_by_year",
+  "get_wage_range",
+  "compare_wages",
+  "get_wage_trend",
+] as const;
 
-const calculatorTools = ["add", "subtract", "multiply", "divide"] as const;
-
-function isAuthenticationFailure(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const message = error.message.toLowerCase();
-
-  return (
-    message.includes("authentication_error") ||
-    message.includes("invalid x-api-key") ||
-    message.includes("incorrect api key") ||
-    message.includes("401")
-  );
+function isWageTool(value: string): value is WageTool {
+  return wageTools.includes(value as WageTool);
 }
 
-function isCalculatorOperation(value: string): value is CalculatorOperation {
-  return calculatorTools.includes(value as CalculatorOperation);
-}
-
-async function executeCalculatorToolCall(
+async function executeWageToolCall(
   toolName: string,
   rawArgs: unknown
 ): Promise<{ success: boolean; content: string }> {
-  if (!isCalculatorOperation(toolName)) {
+  if (!isWageTool(toolName)) {
     return {
       success: false,
-      content: `Unsupported calculator tool '${toolName}'.`,
+      content: `Unsupported wage tool '${toolName}'.`,
     };
   }
 
-  const parse = calculatorArgumentsSchema.safeParse(rawArgs);
-
-  if (!parse.success) {
+  if (typeof rawArgs !== "object" || rawArgs === null) {
     return {
       success: false,
-      content: "Calculator tool arguments must include numeric 'a' and 'b'.",
+      content: "Wage tool arguments must be a valid object.",
     };
   }
 
   try {
-    const result = await callCalculatorTool(
-      toolName,
-      parse.data.a,
-      parse.data.b
-    );
-
-    return {
-      success: true,
-      content: String(result),
-    };
+    const result = await callWageTool(toolName, rawArgs as Record<string, number>);
+    console.log(`[MCP] Tool '${toolName}' result:`, result);
+    return { success: true, content: result };
   } catch (error) {
+    console.error(`[MCP] Tool '${toolName}' failed:`, error);
     return {
       success: false,
       content:
-        error instanceof Error ? error.message : "MCP calculation failed.",
+        error instanceof Error ? error.message : "MCP wage data call failed.",
     };
   }
 }
@@ -91,36 +64,84 @@ async function runOpenAiToolOrchestratedReply(
   apiKey: string,
   model: string,
   chatMessages: Array<{ role: "user" | "assistant"; content: string }>,
-  requiresMathTool: boolean,
+  requiresWageTool: boolean,
   systemPrompt: string
 ): Promise<string> {
   const client = new OpenAI({ apiKey });
 
-  const tools: OpenAI.Chat.Completions.ChatCompletionTool[] =
-    calculatorTools.map((name) => ({
+  const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+    {
       type: "function",
       function: {
-        name,
-        description: `Perform ${name} on two numbers using calculator MCP tool.`,
+        name: "get_wage_by_year",
+        description:
+          "Returns nominal wage, real wage (2010 dollars), CPI, and percent change since 2010 for a given year (2010–2025).",
         parameters: {
           type: "object",
           properties: {
-            a: { type: "number", description: "First number." },
-            b: { type: "number", description: "Second number." },
+            year: { type: "number", description: "Year between 2010 and 2025." },
           },
-          required: ["a", "b"],
+          required: ["year"],
           additionalProperties: false,
         },
       },
-    }));
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_wage_range",
+        description:
+          "Returns wage data for every year in a given range (2010–2025 inclusive).",
+        parameters: {
+          type: "object",
+          properties: {
+            start_year: { type: "number", description: "Start year (2010–2025)." },
+            end_year: { type: "number", description: "End year (2010–2025)." },
+          },
+          required: ["start_year", "end_year"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "compare_wages",
+        description:
+          "Compares nominal vs real wage for a given year, showing the dollar gap and purchasing power change since 2010.",
+        parameters: {
+          type: "object",
+          properties: {
+            year: { type: "number", description: "Year between 2010 and 2025." },
+          },
+          required: ["year"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "get_wage_trend",
+        description:
+          "Analyzes whether real purchasing power grew or shrank between two years, with a plain-English summary.",
+        parameters: {
+          type: "object",
+          properties: {
+            start_year: { type: "number", description: "Start year (2010–2025)." },
+            end_year: { type: "number", description: "End year (2010–2025)." },
+          },
+          required: ["start_year", "end_year"],
+          additionalProperties: false,
+        },
+      },
+    },
+  ];
 
   const initialMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
     [
       { role: "system", content: systemPrompt },
-      ...chatMessages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
   const firstPass = await client.chat.completions.create({
@@ -128,7 +149,7 @@ async function runOpenAiToolOrchestratedReply(
     temperature: 0.2,
     messages: initialMessages,
     tools,
-    tool_choice: requiresMathTool ? "required" : "auto",
+    tool_choice: requiresWageTool ? "required" : "auto",
   });
 
   const firstMessage = firstPass.choices[0]?.message;
@@ -149,16 +170,9 @@ async function runOpenAiToolOrchestratedReply(
     [];
 
   for (const toolCall of toolCalls) {
-    if (toolCall.type !== "function") {
-      continue;
-    }
-
+    if (toolCall.type !== "function") continue;
     const rawArgs: unknown = JSON.parse(toolCall.function.arguments || "{}");
-    const result = await executeCalculatorToolCall(
-      toolCall.function.name,
-      rawArgs
-    );
-
+    const result = await executeWageToolCall(toolCall.function.name, rawArgs);
     toolResultMessages.push({
       role: "tool",
       tool_call_id: toolCall.id,
@@ -185,100 +199,108 @@ async function runAnthropicToolOrchestratedReply(
   apiKey: string,
   model: string,
   chatMessages: Array<{ role: "user" | "assistant"; content: string }>,
-  requiresMathTool: boolean,
+  requiresWageTool: boolean,
   systemPrompt: string
 ): Promise<string> {
   const client = new Anthropic({ apiKey });
 
   const tools = [
     {
-      name: "add",
-      description: "Perform add on two numbers using calculator MCP tool.",
+      name: "get_wage_by_year",
+      description:
+        "Returns nominal wage, real wage (2010 dollars), CPI, and percent change since 2010 for a given year (2010–2025).",
       input_schema: {
         type: "object" as const,
         properties: {
-          a: { type: "number" as const, description: "First number." },
-          b: { type: "number" as const, description: "Second number." },
+          year: { type: "number" as const, description: "Year between 2010 and 2025." },
         },
-        required: ["a", "b"],
+        required: ["year"],
         additionalProperties: false,
       },
     },
     {
-      name: "subtract",
-      description: "Perform subtract on two numbers using calculator MCP tool.",
+      name: "get_wage_range",
+      description:
+        "Returns wage data for every year in a given range (2010–2025 inclusive).",
       input_schema: {
         type: "object" as const,
         properties: {
-          a: { type: "number" as const, description: "First number." },
-          b: { type: "number" as const, description: "Second number." },
+          start_year: { type: "number" as const, description: "Start year (2010–2025)." },
+          end_year: { type: "number" as const, description: "End year (2010–2025)." },
         },
-        required: ["a", "b"],
+        required: ["start_year", "end_year"],
         additionalProperties: false,
       },
     },
     {
-      name: "multiply",
-      description: "Perform multiply on two numbers using calculator MCP tool.",
+      name: "compare_wages",
+      description:
+        "Compares nominal vs real wage for a given year, showing the dollar gap and purchasing power change since 2010.",
       input_schema: {
         type: "object" as const,
         properties: {
-          a: { type: "number" as const, description: "First number." },
-          b: { type: "number" as const, description: "Second number." },
+          year: { type: "number" as const, description: "Year between 2010 and 2025." },
         },
-        required: ["a", "b"],
+        required: ["year"],
         additionalProperties: false,
       },
     },
     {
-      name: "divide",
-      description: "Perform divide on two numbers using calculator MCP tool.",
+      name: "get_wage_trend",
+      description:
+        "Analyzes whether real purchasing power grew or shrank between two years, with a plain-English summary.",
       input_schema: {
         type: "object" as const,
         properties: {
-          a: { type: "number" as const, description: "First number." },
-          b: { type: "number" as const, description: "Second number." },
+          start_year: { type: "number" as const, description: "Start year (2010–2025)." },
+          end_year: { type: "number" as const, description: "End year (2010–2025)." },
         },
-        required: ["a", "b"],
+        required: ["start_year", "end_year"],
         additionalProperties: false,
       },
     },
   ];
 
-  const conversation: Anthropic.MessageParam[] = chatMessages.map(
-    (message) => ({
-      role: message.role,
-      content: message.content,
-    })
-  );
+  const conversation: Anthropic.MessageParam[] = chatMessages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  let lastTextReply = "";
 
   for (let iteration = 0; iteration < 3; iteration += 1) {
+    console.log(`[Anthropic] Iteration ${iteration + 1}`);
+
     const completion = await client.messages.create({
       model,
       max_tokens: 1024,
       system: systemPrompt,
       messages: conversation,
       tools,
-      tool_choice: requiresMathTool ? { type: "any" } : { type: "auto" },
+      tool_choice: requiresWageTool && iteration === 0 ? { type: "any" } : { type: "auto" },
     });
+
+    console.log("[Anthropic] stop_reason:", completion.stop_reason);
+    console.log("[Anthropic] content:", JSON.stringify(completion.content, null, 2));
 
     const textReply = completion.content
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("\n")
       .trim();
 
+    if (textReply) lastTextReply = textReply;
+
     const toolUseBlocks = completion.content.filter(
       (block) => block.type === "tool_use"
     );
 
     if (toolUseBlocks.length === 0) {
-      return textReply;
+      return textReply || lastTextReply;
     }
 
     const toolResults = await Promise.all(
       toolUseBlocks.map(async (block) => {
-        const result = await executeCalculatorToolCall(block.name, block.input);
-
+        const result = await executeWageToolCall(block.name, block.input);
         return {
           type: "tool_result" as const,
           tool_use_id: block.id,
@@ -288,18 +310,27 @@ async function runAnthropicToolOrchestratedReply(
       })
     );
 
-    conversation.push({
-      role: "assistant",
-      content: completion.content,
-    });
-
-    conversation.push({
-      role: "user",
-      content: toolResults,
-    });
+    conversation.push({ role: "assistant", content: completion.content });
+    conversation.push({ role: "user", content: toolResults });
   }
 
-  return "";
+  // Exhausted iterations — do one final pass with tools disabled to force a text summary
+  console.log("[Anthropic] Exhausted iterations, doing final summarization pass");
+  const finalPass = await client.messages.create({
+    model,
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: conversation,
+    tools,
+    tool_choice: { type: "none" },
+  });
+
+  const finalText = finalPass.content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("\n")
+    .trim();
+
+  return finalText || lastTextReply;
 }
 
 export async function POST(request: Request) {
@@ -319,57 +350,20 @@ export async function POST(request: Request) {
     }
 
     const chatMessages = parseResult.data.messages;
-    const userMessages = chatMessages.filter(
-      (message) => message.role === "user"
-    );
+    const userMessages = chatMessages.filter((m) => m.role === "user");
     const lastUserMessage = [...chatMessages]
       .reverse()
-      .find((message) => message.role === "user")?.content;
-    const hasPriorMathContext = userMessages.some((message) =>
-      detectMathRelated(message.content)
+      .find((m) => m.role === "user")?.content;
+
+    const hasPriorWageContext = userMessages.some((m) =>
+      detectWageRelated(m.content)
     );
 
-    if (lastUserMessage) {
-      const mathIntent = detectMathIntent(lastUserMessage);
+    const isCurrentMessageWageRelated = lastUserMessage
+      ? detectWageRelated(lastUserMessage)
+      : false;
 
-      if (mathIntent) {
-        try {
-          const result = await callCalculatorTool(
-            mathIntent.operation,
-            mathIntent.firstNumber,
-            mathIntent.secondNumber
-          );
-
-          return NextResponse.json({
-            reply: `Result: ${result}`,
-          });
-        } catch (mathError) {
-          return NextResponse.json(
-            {
-              error:
-                mathError instanceof Error
-                  ? mathError.message
-                  : "Unable to calculate using MCP server.",
-            },
-            { status: 500 }
-          );
-        }
-      }
-
-      const asksToUseToolOnly = /\b(use|call|invoke)\b.*\btool\b/i.test(
-        lastUserMessage
-      );
-      const mathRelatedMessage =
-        detectMathRelated(lastUserMessage) ||
-        (asksToUseToolOnly && hasPriorMathContext);
-
-      if (mathRelatedMessage) {
-        return NextResponse.json({
-          reply:
-            "I will always use the calculator tool for math and will not do arithmetic directly. Please provide the exact calculation, for example 'add 4 and 5' or '12 / 3'.",
-        });
-      }
-    }
+    const requiresWageTool = isCurrentMessageWageRelated || hasPriorWageContext;
 
     if (!openAiApiKey && !anthropicApiKey) {
       return NextResponse.json(
@@ -382,42 +376,26 @@ export async function POST(request: Request) {
     }
 
     const systemPrompt =
-      "You are a concise, helpful AI assistant integrated into a Next.js web app. You have calculator tools (add, subtract, multiply, divide) and must use them for arithmetic. Never do arithmetic directly in free text. Never claim tools are unavailable.";
+      "You are a helpful AI assistant for the Student Reality Lab — a data project examining whether U.S. entry-level wages have kept pace with inflation since 2010. You have four tools: get_wage_by_year, get_wage_range, compare_wages, and get_wage_trend. Always use these tools when answering questions about wages, inflation, purchasing power, or specific years. Never guess or make up wage data. Respond in plain English — no raw JSON. Data covers production and nonsupervisory workers (BLS CES0500000008) from 2010–2025, with real wages expressed in 2010 dollars using CPI-U.";
 
     let reply = "";
 
     if (anthropicApiKey) {
       const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5";
-
-      try {
-        reply = await runAnthropicToolOrchestratedReply(
-          anthropicApiKey,
-          model,
-          chatMessages,
-          hasPriorMathContext,
-          systemPrompt
-        );
-      } catch (anthropicError) {
-        if (!openAiApiKey || !isAuthenticationFailure(anthropicError)) {
-          throw anthropicError;
-        }
-
-        const fallbackModel = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
-        reply = await runOpenAiToolOrchestratedReply(
-          openAiApiKey,
-          fallbackModel,
-          chatMessages,
-          hasPriorMathContext,
-          systemPrompt
-        );
-      }
+      reply = await runAnthropicToolOrchestratedReply(
+        anthropicApiKey as string,
+        model,
+        chatMessages,
+        requiresWageTool,
+        systemPrompt
+      );
     } else if (openAiApiKey) {
       const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
       reply = await runOpenAiToolOrchestratedReply(
         openAiApiKey,
         model,
         chatMessages,
-        hasPriorMathContext,
+        requiresWageTool,
         systemPrompt
       );
     }
@@ -430,12 +408,12 @@ export async function POST(request: Request) {
     }
 
     if (
-      /(don['’]t have.*tool|cannot.*tool|can't.*tool|no tool.*connected|unable to invoke tools)/i.test(
+      /(don['']t have.*tool|cannot.*tool|can't.*tool|no tool.*connected|unable to invoke tools)/i.test(
         reply
       )
     ) {
       reply =
-        "I can use the calculator tool for arithmetic. Share the exact calculation, for example 'add 4 and 5' or '12 / 3'.";
+        "I can look up wage and inflation data using my tools. Try asking about a specific year or range, like 'what were real wages in 2022?' or 'show me the trend from 2015 to 2023'.";
     }
 
     return NextResponse.json({ reply });
@@ -444,7 +422,6 @@ export async function POST(request: Request) {
       error instanceof Error
         ? error.message
         : "Unexpected server error in chat route.";
-
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
