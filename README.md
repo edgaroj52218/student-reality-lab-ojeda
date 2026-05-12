@@ -1,5 +1,5 @@
 # student-reality-lab-ojeda
-# NJIT Spring 2026 IS219 Midterm Project
+# Interactive data story exploring whether entry-level wages have kept up with inflation since 2010. Built with React and Recharts, deployed on Vercel.
 ___________________________________
 ## Are Entry-Level Wages Keeping Up With Inflation?
 ### A Data Story for Students Entering the Workforce
@@ -179,7 +179,7 @@ assignment requirement for meaningful interaction.
 
 ## How to Run Locally
 ```bash
-git clone https://github.com/yourusername/student-reality-lab-ojeda
+git clone https://github.com/edgaroj52218/student-reality-lab-ojeda
 cd student-reality-lab-ojeda
 npm install
 npm start
