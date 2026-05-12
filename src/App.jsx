@@ -83,6 +83,21 @@ export default function App() {
           </a>
         </p>
       </footer>
+      {/* ── Wage Data AI Assistant ── */}
+<iframe
+  src="https://is-219-mcp-ecsh.vercel.app"
+  style={{
+    position: "fixed",
+    bottom: 0,
+    right: 0,
+    width: "300px",
+    height: "500px",
+    border: "none",
+    zIndex: 1000,
+    background: "transparent",
+  }}
+  title="Wage Data Assistant"
+/>
     </div>
   );
 }
